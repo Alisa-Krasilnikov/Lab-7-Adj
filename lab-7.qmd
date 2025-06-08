@@ -1,12 +1,14 @@
 ---
 title: "Lab 7 - API Work"
-author: "Alisa Krasilnikov"
+author: "Alisa Krasilnikov, Harshini Karthikeyan"
 format: html
 embed-resources: true
 editor: source
 execute: 
   echo: true
 ---
+
+**Note:** This was originally a collaborative assignment. However, I added on some features independently after we received feedback on ways to improve. 
 
 ```{r, message = FALSE, echo = FALSE}
 #| label: load-packages
