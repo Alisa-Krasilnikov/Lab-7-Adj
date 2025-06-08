@@ -1,6 +1,6 @@
 ---
 title: "Lab 7 - API Work"
-author: "Harshini Karthikeyan, Alisa Krasilnikov"
+author: "Alisa Krasilnikov"
 format: html
 embed-resources: true
 editor: source
@@ -20,8 +20,6 @@ library(leaflet)
 library(knitr)
 library(tidyjson)
 ```
-
-**Disclaimer:** This is a collaborative assignment, and we have differing preferences on which pipe operator to use. Sometimes you will see |> and sometimes you will see %>%. Since they function the same way, we chose not to standardize them.
 
 ## Making the U.S.Capitals dataset 
 
@@ -65,17 +63,32 @@ We then created a function that inputs latitudes and longitudes, and retrieves t
 ```{r}
 #| label: API-function
 get_pass_times <- function(lat, lon) {
+  #Check inputs: lat and lon should be numeric (I had to Google what ranges they could have, did not know they were on two different scales!)
+  if (!is.numeric(lat) || lat < -90 || lat > 90) {
+    warning("Invalid latitude. Must be a numeric value between -90 and 90.")
+    return(rep(NA, 3))
+  }
+  if (!is.numeric(lon) || lon < -180 || lon > 180) {
+    warning("Invalid longitude. Must be a numeric value between -180 and 180.")
+    return(rep(NA, 3))
+  }
+  
   #Construct the API URL for the given latitude and longitude
   url <- paste0("https://api.g7vrd.co.uk/v1/satellite-passes/25544/", lat, "/", lon, ".json")
   response <- GET(url) #Call the API 
+  
 
   if (status_code(response) == 200) {
-    data <- fromJSON(rawToChar(response$content)) #Convert raw JSON to useable form
-    
-    if (!is.null(data$passes)) {
-      return(head(data$passes$tca, 3)) #If passes exists in the data, extract first three tca pass times. Note that these are ordered descending, so it should get the earliest three times.
+    data <- fromJSON(rawToChar(response$content)) #Convert raw JSON to usable form
+  
+  if (!is.null(data$passes)) {
+    return(head(data$passes$tca, 3)) #Extract first three pass times (Ordered descending)
+    } else {
+      warning("No passes found in API response.")
+      }
+    } else {
+    warning("API request failed or returned non-200 status.")
     }
-  }
 
   return(rep(NA, 3))  #Return 3 NAs if calling the API fails
 }
@@ -85,21 +98,18 @@ We now take our function and apply it to every row, thus producing a dataframe w
 
 ```{r}
 #| label: Getting-data
-
 capitals_all_passes <- full_capitals_dataset |> 
   mutate(pass_times = pmap(list(latitude, longitude), get_pass_times)) 
   #pass_times is a list of values
 
 capitals_with_passes <- capitals_all_passes |> 
-  mutate(
-    #Extract up to three pass times from the lists in pass_times
-    #The function checks if there is at least (number) elements in the list, if so, it extracts the (number) one, otherwise, it returns NA
-    pass_time_1 = map_chr(pass_times, ~ if(length(.) >= 1) .[1] else NA), 
-    pass_time_2 = map_chr(pass_times, ~ if(length(.) >= 2) .[2] else NA),
-    pass_time_3 = map_chr(pass_times, ~ if(length(.) >= 3) .[3] else NA)) |>
-  select(-pass_times) |>
-  filter(!state %in% c('US', 'PR'))
-
+  unnest_wider(pass_times, names_sep = "_") |>  #Creates pass_times_1, pass_times_2, pass_times_3
+  rename(
+    pass_time_1 = pass_times_1,
+    pass_time_2 = pass_times_2,
+    pass_time_3 = pass_times_3
+  ) |> 
+  filter(!state %in% c('US', 'PR')) 
 
 ```
 
@@ -107,11 +117,12 @@ capitals_with_passes <- capitals_all_passes |>
 
 The following takes our dataset and creates a visualization. 
 
-```{r creating labels and pop-ups}
+```{r}
+#| label: creating-labels-and-pop-ups
 
-capitals_with_passes <- capitals_with_passes %>%
-  arrange(is.na(pass_time_1), pass_time_1) %>%
-  rowwise() %>%
+capitals_with_passes <- capitals_with_passes |> 
+  arrange(is.na(pass_time_1), pass_time_1) |> 
+  rowwise() |> 
   mutate(
     pop_up_html = if (is.na(pass_time_1)) {
       paste0("<b>", capital, "</b><br/>",
@@ -138,7 +149,7 @@ capitals_with_passes <- capitals_with_passes %>%
               paste("Next ISS Passtime:",
                     format(as_datetime(pass_time_1), "%B %d, %Y  %I:%M %p %Z"))
      ))))
-  ) %>%
+  ) |> 
   ungroup()
 
 # created new columns in the dataframe, because the html options were having issues running within the leaflet plot and to make the code for the plot cleaner
@@ -158,7 +169,7 @@ iss_icon <- icons(
   iconHeight = 30
 )
 
-leaflet(capitals_with_passes) |> addTiles() %>%
+leaflet(capitals_with_passes) |> addTiles() |> 
   addMarkers(lng = ~longitude,
              lat = ~latitude,
              icon = iss_icon,
